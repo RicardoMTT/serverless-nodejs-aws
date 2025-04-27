@@ -1,0 +1,98 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: tricardo003
+# "service" is the name of this project. This will also be added to your AWS resource names.
+
+service: medical-appointment
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  region: us-east-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem 
+        - sns:Publish
+        - sqs:SendMessage
+      Resource:
+        - arn:aws:dynamodb:us-east-1:734455697935:table/appointments
+        - arn:aws:sns:us-east-1:734455697935:sns-topic-pe
+        - arn:aws:sns:us-east-1:734455697935:sns-topic-cl
+        - arn:aws:sqs:us-east-1:734455697935:SQS_PE
+        - arn:aws:sqs:us-east-1:734455697935:SQS_CL
+  environment:
+    DYNAMODB_TABLE: appointments
+    SNS_TOPIC_PE: "arn:aws:sns:us-east-1:734455697935:sns-topic-pe"
+    SNS_TOPIC_CL: "arn:aws:sns:us-east-1:734455697935:sns-topic-cl"
+    SQS_PE: "https://sqs.us-east-1.amazonaws.com/734455697935/SQS_PE"
+    SQS_CL: "https://sqs.us-east-1.amazonaws.com/734455697935/SQS_CL"
+
+functions:
+  appointment:
+    handler: handler.appointment
+    events:
+      - http:
+          path: appointment
+          method: post
+          cors: true
+
+  appointment_pe:
+      handler: handler.appointmentPe
+      events:
+        - sqs:
+            arn: arn:aws:sqs:us-east-1:734455697935:SQS_PE
+            batchSize: 5
+
+  appointment_cl:
+    handler: handler.appointmentCl
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:734455697935:SQS_CL
+          batchSize: 5
+          
+resources:
+  Resources:
+    AppointmentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: appointments
+        AttributeDefinitions:
+          - AttributeName: "appointmentId"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "appointmentId"
+            KeyType: "HASH"
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
+
+    SNSTopicPE:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: sns-topic-pe
+
+    SNSTopicCL:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: sns-topic-cl
+
+    SQSQueuePE:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: SQS_PE
+
+    SQSQueueCL:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: SQS_CL
+
+  Outputs:
+    AppointmentQueueURL:
+      Value:
+        Ref: SQSQueuePE
+    AppointmentTopicARN:
+      Value:
+        Ref: SNSTopicPE
