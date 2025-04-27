@@ -1,11 +1,8 @@
-const AWS = require('aws-sdk');
 
-const dynamoDB = new AWS.DynamoDB.DocumentClient();
+const DynamoRepository = require('./dynamoRepository');
+const MySqlRepository = require('./mysqlRepository');
+const NotificationService = require('./notificationService');
 
-const sns = new AWS.SNS();
-const sqs = new AWS.SQS();
-
-const mysql = require('mysql2');
 
 // Crear una conexión a RDS
 const dbConfig = {
@@ -15,12 +12,17 @@ const dbConfig = {
   database: 'test'
 };
 
+// Inicializar repositorios y servicios
+const dynamoRepo = new DynamoRepository('appointments');
+const mysqlRepo = new MySqlRepository(dbConfig);
+const notificationService = new NotificationService();
+
+
 module.exports.appointment = async (event) => {
   try {
-    // Parse the body of the incoming request
+    
     const { insuredId, scheduleId, countryISO } = JSON.parse(event.body);
 
-    // Validation: ensure valid countryISO (PE or CL)
     if (countryISO !== 'PE' && countryISO !== 'CL') {
       return {
         statusCode: 400,
@@ -28,8 +30,9 @@ module.exports.appointment = async (event) => {
       };
     }
 
-    // Prepare data for DynamoDB
+    // Preparamos id para DynamoDB
     const appointmentId = `appt-${Date.now()}`;
+    
     const appointmentData = {
       appointmentId,
       insuredId,
@@ -37,115 +40,96 @@ module.exports.appointment = async (event) => {
       countryISO,
       status: 'pending',
     };
-    console.log(`Creating appointment ${appointmentId} to "completed"`);
 
-    //appt-1745697893784
-    // Save to DynamoDB
-    await dynamoDB
-      .put({
-        TableName: 'appointments',
-        Item: appointmentData,
-      })
-      .promise();
-
-    // Determine which SNS topic and SQS queue to use based on countryISO
-    let snsTopicArn, sqsQueueUrl;
+    await dynamoRepo.saveAppointment(appointmentData);
+    
+    // Determinar cual topic sns usar basado en el campo countryISO
+    let snsTopicArn;
     if (countryISO === 'PE') {
       snsTopicArn = process.env.SNS_TOPIC_PE;
-      sqsQueueUrl = process.env.SQS_PE;
     } else if (countryISO === 'CL') {
       snsTopicArn = process.env.SNS_TOPIC_CL;
-      sqsQueueUrl = process.env.SQS_CL;
     }
 
-    // Send to SNS
+    // Enviar a SNS
     const snsMessage = {
       appointmentId,
       insuredId,
       scheduleId,
       countryISO,
     };
-    await sns
-      .publish({
-        TopicArn: snsTopicArn,
-        Message: JSON.stringify(snsMessage),
-      })
-      .promise();
 
-    // Send to SQS
-    const sqsMessage = {
-      QueueUrl: sqsQueueUrl,
-      MessageBody: JSON.stringify(snsMessage),
+    const messageAttributes = {
+      countryISO: {
+        DataType: 'String',
+        StringValue: countryISO
+      }
     };
-    await sqs.sendMessage(sqsMessage).promise();
 
-    // Return response to the user
+    await notificationService.publishToSNS(snsTopicArn, snsMessage, messageAttributes);
+    
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: 'The appointment is being processed.' }),
+      body: JSON.stringify({ message: 'La cita esta siendo procesada.' }),
     };
+  
   } catch (error) {
-    console.error('Error occurred:', error);
+    console.error('Error:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: 'An error occurred while processing the appointment.' }),
+      body: JSON.stringify({ message: 'Un error ocurrio mientras se proceso la cita.' }),
     };
   }
 };
 
 module.exports.appointmentPe = async (event) => {
+  
   try {
-    for (const record of event.Records) {
-      const message = JSON.parse(record.body);
-      const { appointmentId, insuredId, scheduleId, countryISO } = message;
+    // Se puede agregar logica personalizada para clientes PERU
 
-      const connection =  mysql.createConnection(dbConfig);
-
-      const query = 'INSERT INTO appointments (appointment_id, insured_id, schedule_id, country_iso, status) VALUES (?, ?, ?, ?, ?)';
-      const [rows, fields] = await connection.promise().execute(query, [appointmentId, insuredId, scheduleId, countryISO, 'pending']);
-      console.log('Resultado de connection.execute:', rows); // Ahora sí, usando [rows, fields]
-
-      console.log(`Updating appointment ${appointmentId} to "completed"`);
-
-      // Paso 2: Actualizar el estado en DynamoDB
-      await dynamoDB.update({
-        TableName: 'appointments',
-        Key: { appointmentId },
-        UpdateExpression: 'set #s = :s',
-        ExpressionAttributeNames: { '#s': 'status' },
-        ExpressionAttributeValues: { ':s': 'completed' },
-      }).promise();
-
-      await connection.end();
-      return { statusCode: 200, body: 'Data stored in RDS successfully.' };
-
-    }
-
-    return { statusCode: 200, body: 'Data stored in RDS successfully.' };
+    await processAppointmentRecords(event);
+    return { statusCode: 200, body: JSON.stringify({ message: 'Datos guardados en RDS correctamente.' }) };
   } catch (error) {
-    console.error('Error processing message:', error);
-    return { statusCode: 500, body: 'Error storing data in RDS.' };
+    console.error('Error al procesar el mensaje:', error);
+    return { statusCode: 500, body: JSON.stringify({ message: 'Error al guardar datos en RDS.', error: error.message }) };
   }
+
 };
 
 module.exports.appointmentCl = async (event) => {
   try {
-    for (const record of event.Records) {
-      const message = JSON.parse(record.body);
-      const { appointmentId, insuredId, scheduleId, countryISO } = message;
+    // Se puede agregar logica personalizada para clientes CHILE
 
-      const connection = await mysql.createConnection(dbConfig);
-
-      const query = 'INSERT INTO appointments (appointment_id, insured_id, schedule_id, country_iso, status) VALUES (?, ?, ?, ?, ?)';
-      const [rows, fields] = await connection.execute(query, [appointmentId, insuredId, scheduleId, countryISO, 'pending']);
-      console.log('Data inserted successfully:', rows); // Modificado para usar 'rows'
-
-      await connection.end();
-    }
-
-    return { statusCode: 200, body: 'Data stored in RDS successfully.' };
+    await processAppointmentRecords(event);
+    return { statusCode: 200, body: JSON.stringify({ message: 'Datos guardados en RDS correctamente.' }) };
+  
   } catch (error) {
     console.error('Error processing message:', error);
     return { statusCode: 500, body: 'Error storing data in RDS.' };
   }
 };
+
+
+async function processAppointmentRecords(event) {
+  for (const record of event.Records) {
+    const body = JSON.parse(record.body);
+
+    let messageData;
+    if (body.Message) {
+      messageData = JSON.parse(body.Message);
+    } else {
+      messageData = body;
+    }
+
+    const { appointmentId, insuredId, scheduleId, countryISO } = messageData;
+
+    if (!appointmentId || !insuredId || !scheduleId || !countryISO) {
+      throw new Error(`Datos incompletos: ${JSON.stringify(messageData)}`);
+    }
+
+    const result = await mysqlRepo.saveAppointment(appointmentId, insuredId, scheduleId, countryISO, 'pending');
+    await dynamoRepo.updateAppointmentStatus(appointmentId, 'completed');
+
+    console.log('Datos insertados en RDS:', result);
+  }
+}

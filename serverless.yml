@@ -17,6 +17,8 @@ provider:
         - dynamodb:UpdateItem 
         - sns:Publish
         - sqs:SendMessage
+        - sqs:ReceiveMessage
+
       Resource:
         - arn:aws:dynamodb:us-east-1:734455697935:table/appointments
         - arn:aws:sns:us-east-1:734455697935:sns-topic-pe
@@ -79,20 +81,65 @@ resources:
       Properties:
         TopicName: sns-topic-cl
 
-    SQSQueuePE:
+
+    SQSPEQueuePolicy:
+          Type: AWS::SQS::QueuePolicy
+          Properties:
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Principal: "*"
+                  Action: "sqs:SendMessage"
+                  Resource: !GetAtt SQSPEQueue.Arn
+                  Condition:
+                    ArnEquals:
+                      "aws:SourceArn": !Ref SNSTopicPE
+            Queues:
+              - !Ref SQSPEQueue
+
+    SQSPEQueue:
       Type: AWS::SQS::Queue
       Properties:
         QueueName: SQS_PE
 
-    SQSQueueCL:
+    SQSCLQueue:
       Type: AWS::SQS::Queue
       Properties:
         QueueName: SQS_CL
+      
+    AppointmentTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: appointment-topic
+
+    SQSPEQueueSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref SNSTopicPE
+        Protocol: sqs
+        Endpoint: !GetAtt SQSPEQueue.Arn
+        FilterPolicy:
+          countryISO:
+            - "PE" 
+          
+    SQSCLQueueSubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref SNSTopicCL  # Suscripción correcta
+        Protocol: sqs
+        Endpoint: !GetAtt SQSCLQueue.Arn
+        FilterPolicy:
+          countryISO:
+            - "CL" 
+
 
   Outputs:
     AppointmentQueueURL:
       Value:
-        Ref: SQSQueuePE
+        Ref: SQSPEQueue
     AppointmentTopicARN:
       Value:
         Ref: SNSTopicPE
+
+
