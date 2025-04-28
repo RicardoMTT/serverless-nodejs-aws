@@ -21,7 +21,7 @@ Está diseñado para trabajar de forma asíncrona y escalable, utilizando evento
 - **AWS RDS (MySQL)**
 - **AWS SNS**
 - **AWS SQS**
-- **Serverless Framework** (opcional)
+- **Serverless Framework**
 
 ## 📚 Estructura del Código
 
