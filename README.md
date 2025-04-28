@@ -114,7 +114,7 @@ npm install
 
 ## 🧩 Despliegue
 
-Si usas Serverless Framework:
+Serverless Framework:
 
 ```bash
 sls deploy
