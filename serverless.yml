@@ -4,6 +4,7 @@ org: tricardo003
 
 service: medical-appointment
 
+frameworkVersion: '4'
 
 plugins:
   - serverless-auto-swagger
