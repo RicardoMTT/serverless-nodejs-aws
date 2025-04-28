@@ -120,6 +120,20 @@ Si usas Serverless Framework:
 sls deploy
 ```
 
+### Endpoints
+
+Para crear una cita
+
+```
+https://l0dktcm6q9.execute-api.us-east-1.amazonaws.com/dev/appointment
+```
+
+Para obtener las citas por pais
+
+```
+https://sjpelrzrzc.execute-api.us-east-1.amazonaws.com/appointments/PE
+```
+
 ---
 
 ## 📄 Notas
