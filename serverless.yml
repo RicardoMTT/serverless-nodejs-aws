@@ -4,27 +4,48 @@ org: tricardo003
 
 service: medical-appointment
 
-frameworkVersion: '4'
+
+plugins:
+  - serverless-auto-swagger
+
+custom:
+  autoswagger:
+    title: 'API de Citas Médicas'
+    apiType: 'http'
+    generateSwaggerOnDeploy: true
+    typefiles: ['./openapi.yml']
+    swaggerPath: 'swagger'
+    schemes:
+      - https
+    useStage: true
+    basePath: '/'
+    useCustomSwaggerUI: true
+
 
 provider:
   name: aws
-  runtime: nodejs16.x
+  runtime: nodejs20.x
   region: us-east-1
+  stage: ${opt:stage, 'dev'}
   iamRoleStatements:
     - Effect: Allow
       Action:
         - dynamodb:PutItem
-        - dynamodb:UpdateItem 
+        - dynamodb:UpdateItem
+        - dynamodb:GetItem
+        - dynamodb:Query
         - sns:Publish
         - sqs:SendMessage
         - sqs:ReceiveMessage
-
+        - events:PutEvents
+        - execute-api:Invoke
       Resource:
         - arn:aws:dynamodb:us-east-1:734455697935:table/appointments
         - arn:aws:sns:us-east-1:734455697935:sns-topic-pe
         - arn:aws:sns:us-east-1:734455697935:sns-topic-cl
         - arn:aws:sqs:us-east-1:734455697935:SQS_PE
         - arn:aws:sqs:us-east-1:734455697935:SQS_CL
+        - arn:aws:events:us-east-1:734455697935:event-bus/default
   environment:
     DYNAMODB_TABLE: appointments
     SNS_TOPIC_PE: "arn:aws:sns:us-east-1:734455697935:sns-topic-pe"
@@ -34,27 +55,65 @@ provider:
 
 functions:
   appointment:
-    handler: handler.appointment
+    handler: src/handler.appointment
     events:
       - http:
           path: appointment
           method: post
           cors: true
+          documentation:
+            summary: "Crear una cita médica"
+            description: "Endpoint para crear una nueva cita médica"
+            requestBody:
+              description: "Datos de la cita médica"
+            requestModels:
+              application/json: AppointmentRequest
+
+  getAppointments:
+    handler: src/handler.getAppointments
+    events:
+      - http:
+          path: appointments/{countryISO}
+          method: get
+          cors: true
+          documentation:
+            summary: "Obtener citas médicas"
+            description: "Endpoint para obtener citas médicas por país"
+            pathParams:
+              - name: countryISO
+                description: "Código ISO del país (PE o CL)"
+                required: true
+            methodResponses:
+              - statusCode: 200
+                responseModels:
+                  application/json: Appointment
 
   appointment_pe:
-      handler: handler.appointmentPe
-      events:
-        - sqs:
-            arn: arn:aws:sqs:us-east-1:734455697935:SQS_PE
-            batchSize: 5
+    handler: src/handler.appointmentPe
+    events:
+      - sqs:
+          arn: arn:aws:sqs:us-east-1:734455697935:SQS_PE
+          batchSize: 5
 
   appointment_cl:
-    handler: handler.appointmentCl
+    handler: src/handler.appointmentCl
     events:
       - sqs:
           arn: arn:aws:sqs:us-east-1:734455697935:SQS_CL
           batchSize: 5
-          
+
+
+  swaggerUI:
+    handler: src/swagger-handler.handler
+    events:
+      - http:
+          path: swagger
+          method: get
+          cors: true
+      - http:
+          path: swagger.json
+          method: get
+          cors: true
 resources:
   Resources:
     AppointmentsTable:
@@ -81,22 +140,21 @@ resources:
       Properties:
         TopicName: sns-topic-cl
 
-
     SQSPEQueuePolicy:
-          Type: AWS::SQS::QueuePolicy
-          Properties:
-            PolicyDocument:
-              Version: "2012-10-17"
-              Statement:
-                - Effect: Allow
-                  Principal: "*"
-                  Action: "sqs:SendMessage"
-                  Resource: !GetAtt SQSPEQueue.Arn
-                  Condition:
-                    ArnEquals:
-                      "aws:SourceArn": !Ref SNSTopicPE
-            Queues:
-              - !Ref SQSPEQueue
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        PolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "sqs:SendMessage"
+              Resource: !GetAtt SQSPEQueue.Arn
+              Condition:
+                ArnEquals:
+                  "aws:SourceArn": !Ref SNSTopicPE
+        Queues:
+          - !Ref SQSPEQueue
 
     SQSPEQueue:
       Type: AWS::SQS::Queue
@@ -126,13 +184,12 @@ resources:
     SQSCLQueueSubscription:
       Type: AWS::SNS::Subscription
       Properties:
-        TopicArn: !Ref SNSTopicCL  # Suscripción correcta
+        TopicArn: !Ref SNSTopicCL
         Protocol: sqs
         Endpoint: !GetAtt SQSCLQueue.Arn
         FilterPolicy:
           countryISO:
             - "CL" 
-
 
   Outputs:
     AppointmentQueueURL:
@@ -141,5 +198,7 @@ resources:
     AppointmentTopicARN:
       Value:
         Ref: SNSTopicPE
-
-
+    SwaggerEndpoint:
+      Description: "Endpoint de documentación Swagger"
+      Value: 
+        Fn::Sub: "https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}/swagger"

@@ -2,7 +2,7 @@ const AWS = require('aws-sdk');
 const sns = new AWS.SNS();
 
 class NotificationService {
-  async publishToSNS(topicArn, message, messageAttributes) {
+  async publishToSNS(topicArn:string, message:any, messageAttributes:any) {
     await sns
       .publish({
         TopicArn: topicArn,
@@ -13,4 +13,4 @@ class NotificationService {
   }
 }
 
-module.exports = NotificationService;
+export default NotificationService;

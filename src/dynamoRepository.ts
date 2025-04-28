@@ -2,11 +2,12 @@ const AWS = require('aws-sdk');
 const dynamoDB = new AWS.DynamoDB.DocumentClient();
 
 class DynamoRepository {
-  constructor(tableName) {
+  private tableName:string;
+  constructor(tableName:string) {
     this.tableName = tableName;
   }
 
-  async saveAppointment(appointmentData) {
+  async saveAppointment(appointmentData:any) {
     await dynamoDB
       .put({
         TableName: this.tableName,
@@ -16,7 +17,7 @@ class DynamoRepository {
   }
 
 
-  async updateAppointmentStatus(appointmentId, status) {
+  async updateAppointmentStatus(appointmentId:string, status:string) {
     await dynamoDB.update({
       TableName: this.tableName,
       Key: { appointmentId },
@@ -27,4 +28,4 @@ class DynamoRepository {
   }
 }
 
-module.exports = DynamoRepository;
+export default DynamoRepository;

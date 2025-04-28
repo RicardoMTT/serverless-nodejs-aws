@@ -1,0 +1,54 @@
+# OpenAPI/Swagger definitions para servicio medical-appointment
+components:
+  schemas:
+    Appointment:
+      type: object
+      properties:
+        appointmentId:
+          type: string
+          example: "appt-1650123456789"
+        insuredId:
+          type: string
+          example: "ins-12345"
+        scheduleId:
+          type: string
+          example: "sch-67890"
+        countryISO:
+          type: string
+          enum: [PE, CL]
+          example: "PE"
+        status:
+          type: string
+          enum: [pending, completed, cancelled]
+          example: "pending"
+      required:
+        - appointmentId
+        - insuredId
+        - scheduleId
+        - countryISO
+        - status
+    
+    AppointmentRequest:
+      type: object
+      properties:
+        insuredId:
+          type: string
+          example: "ins-12345"
+        scheduleId:
+          type: string
+          example: "sch-67890"
+        countryISO:
+          type: string
+          enum: [PE, CL]
+          example: "PE"
+      required:
+        - insuredId
+        - scheduleId
+        - countryISO
+    
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          example: "Ha ocurrido un error al procesar su solicitud."
