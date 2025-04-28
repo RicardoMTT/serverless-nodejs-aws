@@ -1,69 +1,149 @@
-<!--
-title: 'AWS Simple HTTP Endpoint example in NodeJS'
-description: 'This template demonstrates how to make a simple HTTP API with Node.js running on AWS Lambda and API Gateway using the Serverless Framework.'
-layout: Doc
-framework: v4
-platform: AWS
-language: nodeJS
-authorLink: 'https://github.com/serverless'
-authorName: 'Serverless, Inc.'
-authorAvatar: 'https://avatars1.githubusercontent.com/u/13742415?s=200&v=4'
--->
+# 📋 Appointments Serverless API
 
-# Serverless Framework Node HTTP API on AWS
+Este proyecto es una **aplicación Serverless** para el manejo de citas médicas (appointments) utilizando **AWS Lambda**, **DynamoDB**, **RDS MySQL** y **SNS**.
 
-This template demonstrates how to make a simple HTTP API with Node.js running on AWS Lambda and API Gateway using the Serverless Framework.
+## 🚀 Descripción
 
-This template does not include any kind of persistence (database). For more advanced examples, check out the [serverless/examples repository](https://github.com/serverless/examples/) which includes Typescript, Mongo, DynamoDB and other examples.
+La aplicación permite:
 
-## Usage
+- Crear citas y almacenarlas inicialmente en **DynamoDB**.
+- Notificar a través de **SNS** para posterior procesamiento.
+- Procesar citas recibidas y almacenarlas de forma permanente en **RDS (MySQL)**.
+- Consultar citas por país (**Perú** o **Chile**).
 
-### Deployment
+Está diseñado para trabajar de forma asíncrona y escalable, utilizando eventos de **SNS** y colas de **SQS** para desacoplar el flujo de procesamiento.
 
-In order to deploy the example, you need to run the following command:
+## 🛠️ Tecnologías Utilizadas
+
+- **Node.js** (TypeScript)
+- **AWS Lambda**
+- **AWS DynamoDB**
+- **AWS RDS (MySQL)**
+- **AWS SNS**
+- **AWS SQS**
+- **Serverless Framework**
+
+## 📚 Estructura del Código
+
+### 1. **Handler.ts**
+
+Contiene las funciones principales de Lambda:
+
+- `getAppointments`  
+  Obtiene citas de la base de datos MySQL según el país (`PE` o `CL`).
+
+- `appointment`  
+  Recibe datos de una nueva cita, los guarda en **DynamoDB** y publica un mensaje en **SNS** para su procesamiento.
+
+- `appointmentPe`  
+  Procesa citas provenientes de mensajes **SQS** específicos para **Perú**.
+
+- `appointmentCl`  
+  Procesa citas provenientes de mensajes **SQS** específicos para **Chile**.
+
+- `processAppointmentRecords`  
+  Función interna que guarda la cita en **RDS** y actualiza su estado en **DynamoDB** a `completed`.
+
+---
+
+### 2. **DynamoRepository.ts**
+
+Clase para interactuar con **DynamoDB**:
+
+- `saveAppointment(appointmentData)`  
+  Guarda un nuevo registro de cita.
+
+- `updateAppointmentStatus(appointmentId, status)`  
+  Actualiza el estado de una cita existente.
+
+---
+
+### 3. **MySqlRepository.ts**
+
+Clase para interactuar con **MySQL**:
+
+- `getAppointmentsByCountry(countryISO)`  
+  Consulta las citas almacenadas según el país.
+
+- `saveAppointment(appointmentId, insuredId, scheduleId, countryISO, status)`  
+  Inserta una nueva cita en la tabla **appointments**.
+
+---
+
+### 4. **NotificationService.ts**
+
+Módulo para publicar mensajes a **SNS** con los atributos necesarios para su procesamiento.
+
+---
+
+## 🧪 Endpoints principales (Swagger anotaciones)
+
+- **GET** `/appointments/{countryISO}`  
+  Obtener citas por país (`PE` o `CL`).
+
+- **POST** `/appointments`  
+  Crear una nueva cita (se almacena en Dynamo y se envía mensaje a SNS).
+
+- **POST** `/appointments/process/pe`  
+  Procesar citas de Perú desde mensajes SQS.
+
+- **POST** `/appointments/process/cl`  
+  Procesar citas de Chile desde mensajes SQS.
+
+## Arquitectura
+
+![image](https://github.com/user-attachments/assets/ab4cc30a-ea08-4ef9-8358-2e71b5c8c912)
+
+
+---
+
+## ⚙️ Variables de Entorno
+
+Debes configurar en tu entorno:
+
+- `SNS_TOPIC_PE` → ARN del topic SNS para Perú.
+- `SNS_TOPIC_CL` → ARN del topic SNS para Chile.
+
+---
+
+## 📦 Instalación
+
+```bash
+npm install
+```
+
+## 🧩 Despliegue
+
+Serverless Framework:
+
+```bash
+sls deploy
+```
+
+### Endpoints
+
+Para crear una cita
 
 ```
-serverless deploy
+https://l0dktcm6q9.execute-api.us-east-1.amazonaws.com/dev/appointment
 ```
 
-After running deploy, you should see output similar to:
+Para obtener las citas por pais
 
 ```
-Deploying "serverless-http-api" to stage "dev" (us-east-1)
-
-✔ Service deployed to stack serverless-http-api-dev (91s)
-
-endpoint: GET - https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/
-functions:
-  hello: serverless-http-api-dev-hello (1.6 kB)
+https://sjpelrzrzc.execute-api.us-east-1.amazonaws.com/appointments/PE
 ```
 
-_Note_: In current form, after deployment, your API is public and can be invoked by anyone. For production deployments, you might want to configure an authorizer. For details on how to do that, refer to [HTTP API (API Gateway V2) event docs](https://www.serverless.com/framework/docs/providers/aws/events/http-api).
+---
 
-### Invocation
+## 📄 Notas
 
-After successful deployment, you can call the created application via HTTP:
+- **DynamoDB** actúa como almacenamiento rápido inicial.
+- **RDS MySQL** actúa como almacenamiento persistente final.
+- El sistema es **extensible** para soportar otros países o flujos.
 
-```
-curl https://xxxxxxx.execute-api.us-east-1.amazonaws.com/
-```
+---
 
-Which should result in response similar to:
+## 📝 Autor
+  Ricardo Tovar.
 
-```json
-{ "message": "Go Serverless v4! Your function executed successfully!" }
-```
-
-### Local development
-
-The easiest way to develop and test your function is to use the `dev` command:
-
-```
-serverless dev
-```
-
-This will start a local emulator of AWS Lambda and tunnel your requests to and from AWS Lambda, allowing you to interact with your function as if it were running in the cloud.
-
-Now you can invoke the function as before, but this time the function will be executed locally. Now you can develop your function locally, invoke it, and see the results immediately without having to re-deploy.
-
-When you are done developing, don't forget to run `serverless deploy` to deploy the function to the cloud.
